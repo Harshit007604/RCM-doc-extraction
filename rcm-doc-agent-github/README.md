@@ -37,7 +37,7 @@ registry; a deterministic X12 835 EDI parser (zero LLM calls, zero
 hallucination surface); Docling-based PDF/image ingestion with real OCR
 confidence grades; a durable SQLite job queue with a mechanical human-review
 policy (dollar threshold, unresolved codes, OCR grade, random QA-audit
-sample); 85 unit tests; a second independent LLM-judge eval; and a
+sample); 106 unit tests; a second independent LLM-judge eval; and a
 multi-model cost/accuracy comparison tool. All of it runs against real LLM
 providers — see [Guardrails](#guardrails-why-this-number-is-real) for the
 evidence this isn't just prompt-and-pray.
@@ -52,6 +52,7 @@ evidence this isn't just prompt-and-pray.
 | Per-model $/1M-token pricing (4 models) | `PRICING_PER_1M` in [evaluation/pricing.py](src/docproc/evaluation/pricing.py) | A pricing **snapshot** fetched once from openai.com — providers change prices; `estimate_cost()` returns `None` (never a guess) for any model not in the table, rather than silently reporting $0.00 |
 | 3 fixed document templates (denial letter / EOB / remittance) | `RENDERERS` in [generator.py](src/docproc/generator.py) | This is *why* the synthetic corpus is structurally regular — real payer mail has far more layout variety than 3 fixed templates, see Known limitations below |
 | Review-policy thresholds (`$5,000` high-value gate, `0%` QA-sample rate) | `ReviewPolicy` in [queue/store.py](src/docproc/queue/store.py) | Deliberately simple constants, tunable by env var/CLI flag — a real deployment would size these against actual appeal-cost and reviewer-capacity data, not a code default |
+| Scope-restriction phrases (Workers' Comp / Property & Casualty) for the semantic check | `_SCOPE_SIGNALS` in [validation.py](src/docproc/validation.py) | Only 2 of the ~30 real scope-restricted CARC codes' restriction types have a common, checkable corroborating signal a payer document would show elsewhere — measured coverage is 11.1% of the "real-but-wrong-code" failure class (`ocr_noise_eval.py`), reported honestly rather than expanded with guessed keyword lists that risk false positives |
 
 None of this is hidden inside a black box: every one of these is a plain
 Python dict/list/dataclass field, readable and editable in one place, and
@@ -192,7 +193,7 @@ src/
   docproc/
     agent.py            LangGraph StateGraph: decide/lookup/extract/finalize/give_up
     schemas.py          Pydantic contracts (DocStep, ClaimExtraction, FieldValue...)
-    validation.py       grounding / arithmetic / business-rule checks (single document)
+    validation.py       grounding / arithmetic / business-rule / semantic scope checks (single document)
     prompts.py          system prompt + message builders
     generator.py        synthetic corpus generator: single docs + matched claim triads
     registry/            CARC/RARC denial-code domain knowledge
@@ -211,6 +212,7 @@ src/
       judge_eval.py        independent LLM-judge faithfulness eval
       compare_models.py    multi-model cost/accuracy comparison CLI
       pricing.py           real per-model $/token pricing table
+      ocr_noise_eval.py    mechanical, zero-LLM detection-rate eval for OCR-corrupted denial codes
     workflows/            multi-document orchestration
       portfolio.py         portfolio triage orchestrator (multi-agent A)
       reconcile.py         cross-document reconciliation (multi-agent B) + ClaimReconciler
@@ -276,22 +278,26 @@ Add `--stream` for a live step-by-step trace.
 
 ```bash
 pip install pytest    # or: pip install -r requirements.txt (included as a dev dep)
-pytest                 # 85 tests, ~0.3s, no API key or network needed
+pytest                 # 106 tests, ~0.3s, no API key or network needed
 ```
 
 Every test is a pure-function test against real captured data -- no LLM
-calls, no mocking of the thing under test. Coverage: the three mechanical
+calls, no mocking of the thing under test. Coverage: the four mechanical
 validators (`validation.py`, including the exact fabricated-value and
-broken-arithmetic "break tests" run live earlier in this project), the
-CARC/RARC registry's two-tier lookup and triage derivation (`codes.py`,
-including the letter-prefixed-CARC bug caught before it shipped), the X12
-835 parser against the real bundled sample (`x12_parser.py`), the JSON
-extractor against real captured failure strings (`common.py`), the
-FieldValue numeric-coercion fix (`schemas.py`), the token-bucket rate
-limiter (`ratelimit.py`), and the durable job queue + review policy
-(`store.py`, including every `triage_decision` branch: error, high-value,
-unresolved-code, grounding-provenance, the OCR-confidence gate, and the
-random QA-audit sample).
+broken-arithmetic "break tests" run live earlier in this project, the
+real Docling-OCR-misread CPT/denial-code regressions, and the OCR-aware
+fuzzy-grounding/severity-escalation behavior), the CARC/RARC registry's
+two-tier lookup, fuzzy edit-distance resolution, and triage derivation
+(`codes.py`, including the letter-prefixed-CARC bug caught before it
+shipped), the X12 835 parser against the real bundled sample
+(`x12_parser.py`), the JSON extractor against real captured failure strings
+(`common.py`), the FieldValue numeric-coercion fix (`schemas.py`), the
+token-bucket rate limiter (`ratelimit.py`), the input-length guard-rail
+(`agent.py`, via a "poison" LLM client that raises if ever called), and the
+durable job queue + review policy (`store.py`, including every
+`triage_decision` branch: error, high-value, unresolved-code,
+grounding-provenance, the OCR-confidence gate, and the random QA-audit
+sample).
 
 ### Evaluation output (real, against `openai/gpt-4.1`, 2026-08-15)
 
@@ -396,32 +402,47 @@ documents so far -- not yet confirmed at the 110-document scale the earlier
 
 ## Guardrails: why this number is real
 
-A blind "trust the LLM" pipeline does **not** produce this output. Four
+A blind "trust the LLM" pipeline does **not** produce this output. Six
 mechanical guardrails sit between the model's raw response and the number
 above, and the self-correction loop exists specifically because the model's
 *first* answer is often wrong in a way these guardrails catch.
 
-### The four guardrails
+### The six guardrails
 
 1. **Grounding** (`validation.py::check_grounding`) — every extracted field
    must carry `source_text`: a verbatim substring that literally occurs in
    the document. A value with no matching span is an error, full stop — this
    is the anti-hallucination check, and it's a hard string-containment test,
-   not a model self-assessment.
+   not a model self-assessment. Under confirmed poor/fair OCR confidence
+   (`ocr_low_grade`), an exact-substring miss falls back to a fuzzy
+   approximate match instead of a hard rejection — exact-match is too
+   strict for genuinely garbled-but-legitimate OCR text (see guardrail #4).
 2. **Arithmetic** (`check_arithmetic`) — line items must sum to the stated
    totals, and `paid <= allowed <= charged` at both the claim and line level.
    Catches a wrong-but-quoted number grounding alone would miss (a
    transcription error can still "occur" in the text).
 3. **Business rules** (`check_business_rules`) — dates parse and are ordered
    (appeal deadline after date of service), every denial code must resolve
-   in the CARC registry (297 real X12 codes + 16 curated), member ID matches
-   a plausible format.
-4. **Deterministic triage** (`codes.py::derive_triage`) — `is_appealable`,
+   in the CARC registry (297 real X12 codes + 16 curated), a CPT procedure
+   code matches the standard 5-digit format, member ID matches a plausible
+   format. An unresolvable code's error message includes fuzzy (edit-
+   distance) candidate matches with descriptions (`registry/codes.py::
+   resolve_fuzzy`), so self-correction gets a bounded list instead of
+   guessing in the open.
+4. **Semantic scope check** (`check_code_semantics`) — a code can be a REAL
+   registry entry and still be semantically wrong for THIS document. ~30 of
+   297 real CARC codes carry an explicit scope restriction in their official
+   X12 description ("to be used for Workers' Compensation only", etc.); if a
+   resolved code carries one and the whole document shows zero corroborating
+   context, that's flagged. Severity escalates from `warning` to `error`
+   under confirmed poor/fair OCR confidence, since a scope mismatch combined
+   with unreliable transcription is a *stronger* signal, not a weaker one.
+5. **Deterministic triage** (`codes.py::derive_triage`) — `is_appealable`,
    `denial_category`, and `dollars_at_risk` are **never taken from the
    model's own words**. They're mechanically recomputed from the
    already-validated `denial_codes` via a straight registry lookup, and the
    model's triage is overridden if it disagrees.
-5. **Business-risk + random-audit review gates** (`store.py::triage_decision`,
+6. **Business-risk + random-audit review gates** (`store.py::triage_decision`,
    `ReviewPolicy`) — independent of how clean the extraction looks, a
    document is still routed to a human whenever `dollars_at_risk` clears a
    configurable threshold (`$5,000` by default), *and* at a configurable
@@ -431,7 +452,31 @@ above, and the self-correction loop exists specifically because the model's
    below for why this gate exists even when the pipeline's own numbers look
    perfect.
 
-### Why guardrail #4 matters more than it sounds
+### Guardrail #4 was added after a real failure, not speculatively
+
+A synthetic handwritten-style document run through the real Docling OCR
+path misread `CO-197` as `CO-19F`. Grounding correctly rejected it, but the
+model's next self-correction guess drifted to `CO-19` — a real, valid
+registry code ("Workers' Compensation liability"), completely unrelated to
+the actual precertification denial. Neither the registry check nor
+grounding could catch this, because `CO-19` IS a genuine registry entry.
+Guardrail #4 exists specifically to catch "real code, wrong for this
+document" — a real, measured before/after on this exact failure mode
+(`python -m src.docproc.evaluation.ocr_noise_eval`, no LLM calls, corrupts
+the real ground-truth corpus's own codes with realistic OCR confusions):
+```
+invalid                 36/36  caught (100.0%)
+valid_but_different      2/18  caught ( 11.1%)
+```
+`invalid` was already 100% before guardrail #4 existed (the registry check).
+`valid_but_different` is the harder case guardrail #4 targets — genuinely up
+from a true 0% baseline, but honestly only 11.1%, since the overwhelming
+majority of real CARC codes carry no scope restriction to check against.
+Reported as a real, partial improvement — not oversold as solved. Full
+write-up, including a real end-to-end re-test proving this fires live (not
+just in unit tests), in [LEARNING.md](LEARNING.md).
+
+### Why guardrail #5 matters more than it sounds
 
 This is the concrete proof the guardrails — not raw model quality — produce
 the 100%: a real cross-tier test on this exact corpus showed `gpt-4.1-mini`
@@ -668,7 +713,7 @@ docker run --rm doc-agent python src/cli.py --doc data/docs/DOC-1000_denial_lett
 | Structured output parsing (Pydantic / JSON) | `src/docproc/schemas.py`, `DocStep.model_validate_json` |
 | Advanced technique | **Three, named explicitly:** (1) chain-of-thought — the mandatory `thought` field on every `DocStep`; (2) *mechanically-verified* self-correction, not vanilla self-reflection — the model's output is checked by an independent, deterministic validator (`validation.py`: grounding/arithmetic/business-rules) and the concrete failures are fed back, rather than asking the model to critique its own answer (`src/docproc/agent.py::_extract_node`); (3) multi-agent collaboration — `PortfolioOrchestrator` (batch triage) and `ClaimReconciler` (cross-document reconciliation), both a fresh `DocumentAgent` per document, in `src/docproc/workflows/` |
 | LLM failure handling (retries/timeout/fallback) | `src/llm.py` (backoff + typed errors), `give_up` node in `src/docproc/agent.py` |
-| Input validation & guard-rails | `src/docproc/validation.py` (grounding / arithmetic / business rules) for OUTPUT; `Settings.max_input_chars` (`src/docproc/agent.py::DocumentAgent.run`) rejects an oversized INPUT document before any LLM call, distinct from `max_tokens` (which only bounds the response); step + retry budgets in `src/config.py` |
+| Input validation & guard-rails | `src/docproc/validation.py` (grounding / arithmetic / business rules / semantic scope check, all OCR-grade-aware) for OUTPUT; `Settings.max_input_chars` (`src/docproc/agent.py::DocumentAgent.run`) rejects an oversized INPUT document before any LLM call, distinct from `max_tokens` (which only bounds the response); step + retry budgets in `src/config.py` |
 | Per-step logging / inspectable trace | `src/logging_utils.py::RunTrace` (JSONL + console) |
 | Evaluation (expected vs actual) | `src/docproc/evaluation/evaluate.py` against `data/docs/ground_truth.json` |
 | Config externalized | `src/config.py` + `.env.example` |
@@ -1090,11 +1135,17 @@ data; a persistent worker or shared-memory handoff would remove that cost.
   once. It is not yet a generalization claim across payers, formats, or
   providers. No offline/mock mode exists anymore, so every run costs a real
   (small) amount and needs a valid API key — see `.env.example`.
-- **PDF/image ingestion is wired but lightly tested.** Docling (optional
-  dependency) converts PDF/DOCX/image input to Markdown before the LLM path
-  runs — verified once end-to-end (a generated PDF matched ground truth on
-  every field), not yet against real scanned/handwritten mail, multi-page
-  documents, or a variety of payer letterheads/table layouts.
+- **PDF/image ingestion is real-tested against one hard case, not a
+  representative sample.** Docling (optional dependency) converts
+  PDF/DOCX/image input to Markdown before the LLM path runs. Verified
+  against a real generated PDF (matched ground truth on every field) AND a
+  synthetic handwritten-style document (cursive font) run through the
+  actual Docling OCR engine — the latter found real character-level errors
+  (a misread CPT code, an inconsistently-misread denial code) that
+  Docling's own confidence grade reported as "good/good" despite them,
+  which is why grounding and the semantic check are OCR-grade-aware (see
+  Guardrails above). Still not tested against real scanned mail, multi-page
+  documents, or a variety of real payer letterheads/table layouts.
 - **Small corpus.** 9 synthetic documents is a smoke test, not a benchmark.
 - **CARC registry: real but heuristically categorized beyond the curated 16.**
   All 297 current CARC codes are real (fetched from x12.org), but only ~16
@@ -1105,10 +1156,20 @@ data; a persistent worker or shared-memory handoff would remove that cost.
   codes, 900+) are fetched/inspected but not yet integrated at all. See
   [Scope](#scope-whats-actually-built-and-where-its-deliberately-simplified)
   above for the full list of hardcoded data this project relies on.
-- **Grounding is substring-based.** It cannot catch a value that is correctly
+- **Grounding is substring-based on clean text; fuzzy-tolerant, not
+  semantic, under poor/fair OCR.** It cannot catch a value that is correctly
   quoted but assigned to the wrong field, and cannot cite a *derived* value
   (see the X12 835 finding in [LEARNING.md](LEARNING.md) — `total_allowed` has
-  no source span in an 835 because it's computed, not quoted).
+  no source span in an 835 because it's computed, not quoted). The
+  OCR-aware fuzzy fallback (`difflib` ratio) widens tolerance for garbled
+  text; it does not verify meaning.
+- **The semantic scope check (guardrail #4) covers a real but narrow slice.**
+  Measured, not assumed: a real detection-rate eval
+  (`ocr_noise_eval.py`) shows it catches 2/18 (11.1%) of "a corrupted code
+  resolves to a different real code" cases — genuinely up from 0%, but only
+  because ~30/297 real CARC codes carry a checkable scope restriction; the
+  other ~90% of codes have none to check against, so a misread landing on
+  one of those is currently uncatchable by this guardrail.
 - **X12 835 parser is minimal.** `x12_parser.parse_835` handles one claim's
   worth of segments (N1/CLP/NM1/DTM/SVC/CAS); real 835s have loops, repeats,
   and optional segments this doesn't cover.
