@@ -184,6 +184,18 @@ for backward compatibility with every existing call site. Internals:
   sample in the system prompt.
 - **`render_lookup(results)`** — formats a batch lookup as the `CODE_LOOKUP:`
   tool-observation message the agent reads on its next turn.
+- **`resolve_fuzzy(code, max_distance=2, limit=5)`** — plain Levenshtein edit
+  distance (no new dependency) against every bare CARC number, returning
+  `(code, description, distance)` candidates. Added after a real Docling OCR
+  test: a misread `CO-197` → `CO-19F` was correctly rejected, but the
+  model's next self-correction guess drifted to `CO-19` — a real, valid,
+  but semantically unrelated code — because it was given an open-ended
+  "try again" instead of a bounded candidate set. Wired into
+  `check_business_rules`'s error message (`validation.py`). Known edge case:
+  a bare 2-letter fragment with no digits (e.g. `"PR"` with the number lost
+  to OCR) can rank same-length unrelated codes ahead of the more likely
+  intended match — a real ambiguity in what the fragment meant, documented
+  in the method's own docstring, not silently hidden.
 - **`primary_denial_code(denial_codes)`** — resolves the single code that
   should drive the triage decision (first appealable/actionable code, else
   the first resolvable code, else `None`).
@@ -218,25 +230,45 @@ auditable and versionable, not scattered across code.
 ### `src/docproc/validation.py` — the mechanical feedback signal
 
 **Why it exists:** this is the project's central design bet — self-correction
-must be driven by *verifiable* failures, not "reflect on your answer." Three
+must be driven by *verifiable* failures, not "reflect on your answer." Four
 independent, composable checks:
 
-- **`check_grounding(ext, document)`** — every populated field's
-  `source_text` must literally occur in the document (whitespace/case
+- **`check_grounding(ext, document, ocr_low_grade=None)`** — every populated
+  field's `source_text` must literally occur in the document (whitespace/case
   normalized). Missing `source_text` entirely is also an error. This is the
-  anti-hallucination check.
+  anti-hallucination check. Under confirmed poor/fair `ocr_low_grade`, an
+  exact-substring miss falls back to a fuzzy `difflib`-ratio approximate
+  match (`_fuzzy_occurs`) as a `warning` instead of a hard `error` — exact
+  match is too strict for genuinely garbled-but-legitimate OCR text.
 - **`check_arithmetic(ext)`** — line items must sum to the stated totals;
   paid ≤ allowed ≤ charged, both at claim level and per line. Catches
   transcription/OCR-style digit errors that grounding alone would miss (a
   wrong-but-quoted number still "occurs" in the text).
 - **`check_business_rules(ext)`** — dates parse and are ordered (deadline
-  after date of service), denial codes exist in the registry, member id looks
+  after date of service), denial codes exist in the registry (an
+  unresolvable code's message now includes `registry/codes.py::resolve_fuzzy`
+  edit-distance candidates instead of a bare rejection), a CPT procedure code
+  matches the standard 5-digit format (added after a real Docling OCR test
+  misread `70450` as `F0450` with nothing catching it), member id looks
   plausible.
-- **`validate(ext, document)`** — runs all three and combines them; `ok` is
-  `False` if any issue is `severity="error"` (warnings don't block finalize).
+- **`check_code_semantics(ext, document, ocr_low_grade=None)`** — a code can
+  be a REAL registry entry and still be wrong for THIS document. ~30/297 real
+  CARC codes carry an explicit scope restriction in their official X12
+  description (Workers' Compensation / Property & Casualty "only"); if a
+  resolved code carries one and the document shows zero corroborating
+  context anywhere, that's flagged. Severity escalates `warning` → `error`
+  under poor/fair `ocr_low_grade`. Added after a real Docling OCR test: a
+  misread `CO-197` drifted, across self-correction attempts, to `CO-19` — a
+  real, valid, but semantically unrelated code. Measured detection rate
+  (`ocr_noise_eval.py`, zero LLM calls): 2/18 (11.1%) of "real but wrong
+  code" corruptions caught — a genuine, if partial, improvement from a true
+  0% baseline before this check existed.
+- **`validate(ext, document, ocr_low_grade=None)`** — runs all four and
+  combines them; `ok` is `False` if any issue is `severity="error"` (warnings
+  don't block finalize).
 - Helpers: **`_norm`** (whitespace/case fold for substring checks), **`_num`**
   (parse a currency-ish string), **`_parse_date`** (try a few known date
-  formats).
+  formats), **`_fuzzy_occurs`** (OCR-tolerant approximate substring match).
 
 ### `src/docproc/agent.py` — the LangGraph loop itself
 
@@ -249,10 +281,19 @@ observe → self-correct → respond` control flow.
   claims). `__init__` builds and compiles the graph once. `_build` wires the
   five nodes (`decide`/`lookup`/`extract`/`finalize`/`give_up`) and their
   conditional routing.
-- **`run(document, filename, on_event, on_token)`** — invokes the compiled
-  graph to completion and returns a `DocOutcome`. `on_event`/`on_token` are
-  optional callbacks so a live UI (CLI `--stream`, the Streamlit app) can
-  render progress without the agent knowing anything about UIs.
+- **`run(document, filename, on_event, on_token, ocr_low_grade=None)`** —
+  invokes the compiled graph to completion and returns a `DocOutcome`.
+  `on_event`/`on_token` are optional callbacks so a live UI (CLI `--stream`,
+  the Streamlit app) can render progress without the agent knowing anything
+  about UIs. `ocr_low_grade` (Docling's worst-5th-percentile grade, `None`
+  for non-OCR text) threads into `validate()` so grounding/semantic checks
+  can be OCR-aware. Before the graph runs at all, an input-length guard
+  rejects a document over `Settings.max_input_chars` (100,000 chars
+  default) with `status="error"` and **zero LLM calls** — `store.
+  triage_decision` routes `status="error"` to human review, so a rejected
+  document still gets a human, not a silent drop. Tested in
+  `tests/test_agent.py` via a "poison" `LLMClient` that raises if
+  `complete()` is ever called.
 - **`_emit`** — the single choke point every node uses to both write to the
   JSONL trace and forward to `on_event`.
 - **Nodes:**
@@ -586,14 +627,15 @@ made the project's own tooling asymmetric with its stated priority (the
   optional `generate_triads` call → `ClaimReconciler.run` per claim group,
   plus a "caught N/M injected discrepancies" scoreboard).
 - **Review queue (HITL)** — the fourth mode, and the human half of the
-  enterprise pipeline. Reads `JobStore` directly (WAL means it can read live
-  while workers write): an ops dashboard (queued / pending / auto-approved /
-  needs-review / `$` at risk / LLM calls / documents processed with zero
-  inference), the flagged worklist ranked by dollars at risk with a "why
-  flagged" column, and a per-document review pane — source text, the
-  extracted fields *with the span each was grounded in*, validation errors,
-  the agent's triage — plus approve / edit-and-approve / reject, written
-  back via `record_review`.
+  enterprise pipeline. Reads `JobStore` directly (rollback-journal mode, not
+  WAL — see `store.py`'s module docstring for why: WAL corrupted for real
+  over a multi-container Docker Desktop bind mount) — an ops dashboard
+  (queued / pending / auto-approved / needs-review / `$` at risk / LLM
+  calls / documents processed with zero inference), the flagged worklist
+  ranked by dollars at risk with a "why flagged" column, and a per-document
+  review pane — source text, the extracted fields *with the span each was
+  grounded in*, validation errors, the agent's triage — plus approve /
+  edit-and-approve / reject, written back via `record_review`.
 
 ---
 
@@ -605,14 +647,22 @@ made the project's own tooling asymmetric with its stated priority (the
 production-readiness self-assessment now has real assertions, not just
 one-off terminal verification. `pytest.ini` (repo root) sets
 `pythonpath = .` so `from src...` imports work without installing the
-project as a package. 85 tests, ~0.3s, no LLM/API key/network needed.
+project as a package. 106 tests, ~0.3s, no LLM/API key/network needed.
 
-- **`test_validation.py`** — the three mechanical validators, including the
+- **`test_validation.py`** — the four mechanical validators, including the
   fabricated-value and broken-arithmetic cases run live earlier in the
-  project, now as real assertions.
-- **`test_codes.py`** — the two-tier CARC lookup, `derive_triage`, and a
-  regression test for the letter-prefixed-CARC bug (`A1`/`B4`/`P12`) caught
-  before it shipped.
+  project, the real Docling-OCR-misread CPT/denial-code regressions, the
+  semantic scope-check cases (including the real `CO-19` failure and its
+  OCR-grade severity escalation), and the OCR-aware fuzzy-grounding cases,
+  now as real assertions.
+- **`test_codes.py`** — the two-tier CARC lookup, `derive_triage`,
+  `resolve_fuzzy` (edit-distance candidates, including the real `CO-19F`
+  regression), and a regression test for the letter-prefixed-CARC bug
+  (`A1`/`B4`/`P12`) caught before it shipped.
+- **`test_agent.py`** — the input-length guard-rail, proven with a "poison"
+  `LLMClient` subclass that raises `AssertionError` if `complete()` is ever
+  called, so the rejection test only passes because the LLM was genuinely
+  never reached.
 - **`test_x12_parser.py`** — `parse_835` against the real bundled
   `data/real_world/sample_835.edi`.
 - **`test_common.py`** — `_extract_json` against the exact real failure
@@ -626,6 +676,27 @@ project as a package. 85 tests, ~0.3s, no LLM/API key/network needed.
   grounding-provenance, OCR-confidence gate).
 - **`test_ingest.py`** — extension-based routing and the Docling
   import-error hint (mocked; doesn't require Docling installed).
+
+### `src/docproc/evaluation/ocr_noise_eval.py` — OCR-corruption detection-rate eval
+
+**Why it exists:** a pure-mechanical eval (zero LLM calls) that turns the
+real Docling handwritten-document finding (a misread `CO-197` drifted to
+`CO-19`, a real-but-wrong code) into a measurable before/after instead of a
+single anecdote. Corrupts the real ground-truth corpus's own denial codes
+with realistic OCR confusions (character substitution AND truncation) and
+measures what fraction of each corruption bucket `check_business_rules` +
+`check_code_semantics` actually catch.
+
+- **`corrupt_code` / `truncate_code`** — the two real corruption mechanisms
+  this project's own Docling test actually produced.
+- **`classify`** — buckets a corruption as `invalid` (doesn't resolve at
+  all), `valid_but_different` (resolves to a DIFFERENT real code — the
+  harder case), or `unchanged`.
+- **`run` / `render` / `main`** — CLI: `python -m
+  src.docproc.evaluation.ocr_noise_eval`. Real result: `invalid` 36/36
+  (100%, already true before the semantic check existed); `valid_but_different`
+  2/18 (11.1%, genuinely up from a true 0% baseline, but honestly partial —
+  only ~30/297 real codes carry a scope restriction to check against).
 
 ### `src/docproc/evaluation/judge_eval.py` — independent LLM-judge faithfulness eval
 
