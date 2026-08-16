@@ -1,0 +1,19 @@
+Sunstate Medical Assurance
+EXPLANATION OF BENEFITS — THIS IS NOT A BILL
+========================================================================
+Member: Grace Okonkwo   ID: A323287495
+Claim #: CLM3635981472   Serviced: 2026-05-04
+Rendering Facility: Cardinal Point Health System
+
+CPT           BILLED     ALLOWED        PAID      CODE
+------------------------------------------------------------------------
+36415       4,138.36        0.00        0.00     CO-50
+99285       1,951.32      953.17      839.00     CO-45
+70450         591.57      383.56      330.24     CO-45
+------------------------------------------------------------------------
+TOTALS      6,681.25    1,336.73    1,169.24
+
+Amount you may owe: 167.49
+
+Remark codes on this claim: CO-45 CO-50 PR-2
+Deadline to dispute: 10/31/2026

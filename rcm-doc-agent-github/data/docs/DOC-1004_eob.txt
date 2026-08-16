@@ -1,0 +1,18 @@
+Meridian Health Plan
+EXPLANATION OF BENEFITS — THIS IS NOT A BILL
+========================================================================
+Member: Elena Ferraro   ID: Z365874400
+Claim #: CLM2234510745   Serviced: 2026-04-25
+Rendering Facility: Riverbend Regional Medical Center
+
+CPT           BILLED     ALLOWED        PAID      CODE
+------------------------------------------------------------------------
+36415         270.70        0.00        0.00     CO-97
+71046       2,036.02    1,035.96      761.56     CO-45
+------------------------------------------------------------------------
+TOTALS      2,306.72    1,035.96      761.56
+
+Amount you may owe: 274.40
+
+Remark codes on this claim: CO-45 CO-97 PR-1
+Deadline to dispute: 08/23/2026

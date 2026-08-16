@@ -1,0 +1,18 @@
+BlueCrest Mutual
+EXPLANATION OF BENEFITS — THIS IS NOT A BILL
+========================================================================
+Member: Nina Barrera   ID: C204615284
+Claim #: CLM3744112455   Serviced: 2026-03-16
+Rendering Facility: Riverbend Regional Medical Center
+
+CPT           BILLED     ALLOWED        PAID      CODE
+------------------------------------------------------------------------
+80053       2,475.07        0.00        0.00     CO-50
+93010       2,432.23    1,675.08    1,224.34     CO-45
+------------------------------------------------------------------------
+TOTALS      4,907.30    1,675.08    1,224.34
+
+Amount you may owe: 450.74
+
+Remark codes on this claim: CO-45 CO-50 PR-3
+Deadline to dispute: 09/12/2026

@@ -1,0 +1,52 @@
+NORTHLAKE BENEFIT ADMINISTRATORS
+Claims Review Department
+P.O. Box 41822, Suite 300
+
+January 21, 2026
+
+Cardinal Point Health System
+Attn: Patient Financial Services
+
+RE: NOTICE OF CLAIM DETERMINATION
+
+Patient Name:       Devon Delacroix
+Member Identifier:  A200497933
+Claim Number:       CLM8717592285
+Date of Service:    02/08/2026
+
+Dear Provider,
+
+We have completed our review of the above-referenced claim. Following
+adjudication, one or more submitted services have not been approved for
+payment. The determination for each service line appears below.
+
+SERVICE LINE DETAIL
+----------------------------------------------------------------
+  Procedure 36415 - Collection of venous blood by venipuncture
+    Amount Billed .......... $3,253.57
+    Amount Allowed ......... $0.00
+    Amount Paid ............ $0.00
+    Adjustment Reason ...... CO-50
+
+  Procedure 99285 - Emergency dept visit, high complexity
+    Amount Billed .......... $2,483.56
+    Amount Allowed ......... $1,878.61
+    Amount Paid ............ $1,491.85
+    Adjustment Reason ...... CO-45
+
+----------------------------------------------------------------
+  TOTAL BILLED ............. $5,737.13
+  TOTAL ALLOWED ............ $1,878.61
+  TOTAL PAID ............... $1,491.85
+  PATIENT RESPONSIBILITY ... $386.76
+
+Adjustment reason codes applied to this claim: CO-45, CO-50, PR-3.
+
+APPEAL RIGHTS
+If you believe this determination is in error, you may submit a written
+appeal with supporting clinical documentation. Appeals must be received
+no later than June 08, 2026. Appeals received after this date
+will not be considered absent proof of good cause.
+
+Sincerely,
+Provider Appeals Unit
