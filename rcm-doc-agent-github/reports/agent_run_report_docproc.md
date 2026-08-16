@@ -1,8 +1,12 @@
 # Agent Run Report — Healthcare RCM Document-Processing Agent
 
-All traces and metrics below are **real output** from the code in this repo,
-produced with the offline `mock` extractor (`python -m src.docproc.evaluate`,
-`python src/agent.py --domain document-processing --doc ...`).
+All traces and metrics below are **real output** from the code in this repo.
+The offline `mock` extractor referenced in earlier drafts of this report was
+removed entirely (see §5/LEARNING.md, 2026-08-13) — there is no offline mode
+anymore, and the CLI has no `--domain` flag. Every real run cited here is
+against a real LLM provider via `python -m src.docproc.evaluation.evaluate`
+or `python src/cli.py --doc ...`; §4a is the actual evidence base (a real
+`gpt-4.1` run, not a mock).
 
 ---
 

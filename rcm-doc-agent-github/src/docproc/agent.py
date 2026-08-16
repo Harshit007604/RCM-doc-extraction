@@ -32,6 +32,7 @@ from .validation import validate
 class DocState(TypedDict, total=False):
     document: str
     filename: str
+    ocr_low_grade: Optional[str]
     messages: list
     step: int
     fix_rounds: int
@@ -81,10 +82,15 @@ class DocumentAgent:
 
     # ------------------------------------------------------------------ #
     def run(self, document: str, filename: str = "document.txt",
-            on_event=None, on_token=None) -> DocOutcome:
+            on_event=None, on_token=None, ocr_low_grade: str | None = None) -> DocOutcome:
         """Run the full loop on one document to completion (ok / incomplete /
         error). `on_event`/`on_token` are optional callbacks for live UIs
         (CLI `--stream`, the Streamlit app) to render progress as it happens.
+
+        `ocr_low_grade`: Docling's worst-5th-percentile OCR confidence grade
+        for this document (`None` for plain text / non-OCR input, see
+        `ingest.IngestResult.ocr_low_grade`). Threaded through to `validate()`
+        so grounding/semantic checks can be OCR-aware (see `validation.py`).
         """
         self._trace = RunTrace(self.s.log_dir, f"extract:{filename}")
         self._on_event, self._on_token = on_event, on_token
@@ -92,8 +98,29 @@ class DocumentAgent:
         # callers (e.g. evaluate.py's loop), so token counts must not leak
         # from a previous document into this one.
         self._token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        # Input guard-rail: reject an oversized document BEFORE it's ever
+        # sent to the LLM, rather than silently forwarding an arbitrarily
+        # large payload (a misrouted binary file, an accidentally-
+        # concatenated multi-document dump). Zero LLM calls spent on a
+        # rejected document -- this check happens before the graph runs at
+        # all. `store.triage_decision` routes `status="error"` outcomes to
+        # `needs_review` (see queue/store.py), so a rejected document still
+        # gets a human, not a silent drop.
+        if len(document) > self.s.max_input_chars:
+            self._emit(0, "error",
+                       message=(f"Input too large: {len(document):,} chars exceeds the "
+                                f"{self.s.max_input_chars:,}-char guard-rail (config: "
+                                f"max_input_chars); rejected before any LLM call."))
+            return DocOutcome(
+                status="error", steps_used=0, trace_path=self._trace.path,
+                message=(f"Document too large ({len(document):,} chars > "
+                         f"{self.s.max_input_chars:,}-char limit); rejected before "
+                         f"sending to the LLM."),
+                token_usage=dict(self._token_usage))
+
         init: DocState = {
-            "document": document, "filename": filename,
+            "document": document, "filename": filename, "ocr_low_grade": ocr_low_grade,
             "messages": [{"role": "user",
                           "content": build_doc_task_message(document, filename)}],
             "step": 0, "fix_rounds": 0,
@@ -164,7 +191,7 @@ class DocumentAgent:
                              "content": "EXTRACT requires a non-null `extraction` object. Re-emit it."})
             return {"messages": messages}
 
-        report = validate(ext, state["document"])
+        report = validate(ext, state["document"], state.get("ocr_low_grade"))
         n_err = sum(1 for i in report.issues if i.severity == "error")
         self._emit(step, "validation", ok=report.ok, errors=n_err,
                    issues=[f"{i.field}: {i.message}" for i in report.issues][:6])

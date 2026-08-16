@@ -157,7 +157,8 @@ def _run_single(args, settings) -> int:
         llm = LLMClient(settings)
         on_event = make_stream_callback(args.stream)
         outcome = DocumentAgent(settings, llm).run(
-            ingested.text, os.path.basename(args.doc), on_event=on_event)
+            ingested.text, os.path.basename(args.doc), on_event=on_event,
+            ocr_low_grade=ingested.ocr_low_grade)
 
     ext, tri, val = outcome.extraction, outcome.triage, outcome.validation
     print(f"\n=== EXTRACTION ({outcome.status}, {outcome.steps_used} steps) ===")
@@ -169,7 +170,11 @@ def _run_single(args, settings) -> int:
         print(f"  {'denial_codes':<24} {', '.join(ext.denial_codes)}")
         print(f"  {'line_items':<24} {len(ext.line_items)}")
     print(f"\nVALIDATION: {'passed' if val and val.ok else 'failed'}")
-    if val and not val.ok:
+    if val and val.issues:
+        # Print ALL issues, not just when the overall result failed --
+        # warnings (e.g. a semantic scope mismatch under a "good" OCR grade,
+        # see LEARNING.md) don't block finalize but are still real signal a
+        # human reviewer should see, not silently dropped from the report.
         for i in val.issues:
             print(f"  [{i.severity}] {i.field}: {i.message}")
     if tri:

@@ -158,6 +158,13 @@ budget. The distinctive property: the "observe" step is a *mechanical*
 validator, not the model grading itself — self-correction is driven by
 verifiable failures, not a "reflect on your answer" prompt.
 
+Mapped onto the more common five-verb framing (`reason -> plan -> act ->
+observe -> respond`): the mandatory `thought` field on every `DocStep` IS
+the plan/reason step (the model must state what it's about to do and why
+before doing it) — it's written as `reason -> act` above because in this
+architecture the plan is never a separate turn, it's inline with the acted-on
+decision itself, one JSON object per turn rather than two.
+
 `lookup_code` is marked optional above because `derive_triage` overrides
 `is_appealable`/`denial_category`/`dollars_at_risk` from the registry
 regardless of whether the model called it — see
@@ -607,6 +614,8 @@ writes a JSONL reasoning trace to `logs/run_<id>.jsonl`.
 | **PDF / image / DOCX ingestion** | `pip install docling`, then `python src/cli.py --doc some_file.pdf` | `src/docproc/ingestion/ingest.py` — Docling converts to Markdown, then the normal LLM path runs on it |
 | **Multi-agent A: portfolio triage** | `python src/cli.py --batch data/docs` | `src/docproc/workflows/portfolio.py` (planner → fresh `DocumentAgent` per doc → synthesizer ranks by $ at risk) |
 | **Multi-agent B: cross-document reconciliation** | `python -m src.docproc.generator --mode triads --out data/matched_claims --n 6` then `python src/cli.py --reconcile data/matched_claims` | `src/docproc/workflows/reconcile.py` (fresh `DocumentAgent` per document in a claim group → cross-check) |
+| **Input-length guard-rail** | automatic on every run — no flag needed | `Settings.max_input_chars` (`src/docproc/agent.py::DocumentAgent.run`), tested in `tests/test_agent.py` — rejects an oversized document with zero LLM calls, distinct from `max_tokens` (which bounds the response, not the request) |
+| **Named test scenarios** | `python -m pytest tests/` exercises them; see the doc for the mapping | [tests/scenarios.md](tests/scenarios.md) — 5 named scenarios, each with real evidence already in this repo (not new claims) |
 
 The Streamlit UI wraps all three CLI modes above — a picker for sample/uploaded
 documents, a live-streamed reasoning trace, the extraction table + validation
@@ -627,6 +636,19 @@ surfaced (a no-op "correction" on a fully-denied claim) in [LEARNING.md](LEARNIN
 Cross-session memory previously lived here for the CSV agent; it's moved to
 [legacy/](#legacy-csv-data-analysis-agent).
 
+**Bonus item: cross-session memory/conversation persistence — intentionally
+out of scope for the primary document-extraction agent.** `Settings.memory_dir`
+and `.env.example`'s `MEMORY_DIR` exist and are real, but they're consumed
+ONLY by `legacy/memory.py` (the CSV agent's actual working memory
+implementation, see [Legacy: CSV data-analysis agent](#legacy-csv-data-analysis-agent))
+— grep confirms `src/docproc/` never reads either. Each document-extraction
+run is deliberately a fresh, independent `DocumentAgent` invocation with no
+checkpointed state across runs; a real implementation would use LangGraph's
+built-in `SqliteSaver` checkpointer (the graph is already a `StateGraph`, so
+this would be a config change to `_build()`, not a redesign) but that hasn't
+been built. Stated here explicitly rather than left as an unused config field
+that implies a feature exists.
+
 ### Docker
 
 ```bash
@@ -644,9 +666,9 @@ docker run --rm doc-agent python src/cli.py --doc data/docs/DOC-1000_denial_lett
 | Agent loop reason→act→observe→self-correct→respond | `src/docproc/agent.py` (LangGraph StateGraph) |
 | ≥1 tool / function call | `src/docproc/registry/codes.py::lookup_codes` (CARC registry: ~16 curated + 297 real X12-fetched codes as fallback) |
 | Structured output parsing (Pydantic / JSON) | `src/docproc/schemas.py`, `DocStep.model_validate_json` |
-| Advanced technique | chain-of-thought (`thought`) + **self-critique/self-correction** on failed validation (`src/docproc/agent.py::_extract_node`) + grounded evidence (`source_text`) |
+| Advanced technique | **Three, named explicitly:** (1) chain-of-thought — the mandatory `thought` field on every `DocStep`; (2) *mechanically-verified* self-correction, not vanilla self-reflection — the model's output is checked by an independent, deterministic validator (`validation.py`: grounding/arithmetic/business-rules) and the concrete failures are fed back, rather than asking the model to critique its own answer (`src/docproc/agent.py::_extract_node`); (3) multi-agent collaboration — `PortfolioOrchestrator` (batch triage) and `ClaimReconciler` (cross-document reconciliation), both a fresh `DocumentAgent` per document, in `src/docproc/workflows/` |
 | LLM failure handling (retries/timeout/fallback) | `src/llm.py` (backoff + typed errors), `give_up` node in `src/docproc/agent.py` |
-| Input validation & guard-rails | `src/docproc/validation.py` (grounding / arithmetic / business rules), step + retry budgets in `src/config.py` |
+| Input validation & guard-rails | `src/docproc/validation.py` (grounding / arithmetic / business rules) for OUTPUT; `Settings.max_input_chars` (`src/docproc/agent.py::DocumentAgent.run`) rejects an oversized INPUT document before any LLM call, distinct from `max_tokens` (which only bounds the response); step + retry budgets in `src/config.py` |
 | Per-step logging / inspectable trace | `src/logging_utils.py::RunTrace` (JSONL + console) |
 | Evaluation (expected vs actual) | `src/docproc/evaluation/evaluate.py` against `data/docs/ground_truth.json` |
 | Config externalized | `src/config.py` + `.env.example` |

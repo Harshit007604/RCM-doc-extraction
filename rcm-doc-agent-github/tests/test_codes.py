@@ -13,6 +13,7 @@ from src.docproc.registry.codes import (
     lookup_code,
     lookup_codes,
     primary_denial_code,
+    resolve_fuzzy,
 )
 
 
@@ -112,3 +113,43 @@ class TestDeriveTriage:
         primary = primary_denial_code(["CO-45", "CO-197", "CO-97"])
         assert primary is not None
         assert primary.code == "CO-197"  # first appealable, in the given order
+
+
+class TestResolveFuzzy:
+    """Real regression case: a Docling OCR test misread `CO-197` as `CO-19F`
+    across a self-correction loop, and the model's next guess drifted to
+    `CO-19` -- a real, valid, but semantically unrelated code. `resolve_fuzzy`
+    exists to hand the model a bounded candidate set instead of letting it
+    guess in the open."""
+
+    def test_real_ocr_misread_returns_both_true_candidates(self):
+        """CO-19F is edit-distance 1 from both CO-197 (the actual code) and
+        CO-19 (the code the model incorrectly drifted to) -- both must be
+        surfaced, not just one."""
+        candidates = resolve_fuzzy("CO-19F")
+        codes = {c for c, _desc, _dist in candidates}
+        assert "CO-197" in codes
+        assert "19" in codes  # raw registry key for CO-19
+
+    def test_candidates_are_sorted_closest_first(self):
+        candidates = resolve_fuzzy("CO-19F")
+        distances = [d for _c, _desc, d in candidates]
+        assert distances == sorted(distances)
+
+    def test_empty_bare_number_returns_no_candidates(self):
+        """A pure group-prefix fragment with the number stripped entirely
+        ("PR-" -> bare "") has no numeric signal to match against -- must
+        return [], not flood with meaningless distance-1 noise."""
+        assert resolve_fuzzy("PR-") == []
+
+    def test_empty_code_returns_no_candidates(self):
+        assert resolve_fuzzy("") == []
+
+    def test_exact_match_is_not_returned_as_a_fuzzy_candidate_source(self):
+        """A code that already resolves has no reason to call resolve_fuzzy
+        in the first place, but if called, distance-0 self-matches are a
+        valid (if trivial) result -- just confirming no crash/duplicate
+        explosion on a real, resolvable code."""
+        candidates = resolve_fuzzy("CO-197")
+        assert any(c == "CO-197" for c, _d, dist in candidates if dist == 0)
+

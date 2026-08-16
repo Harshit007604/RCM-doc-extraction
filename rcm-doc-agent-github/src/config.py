@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     max_steps: int = Field(default=8)              # hard cap on loop iterations
     max_code_retries: int = Field(default=2)       # self-correction attempts per exec
 
+    # --- Input guard-rail ---
+    # Reject an oversized document BEFORE it's ever sent to the LLM, rather
+    # than silently forwarding an arbitrarily large payload. 100,000 chars
+    # (~25k tokens at the project's own ~4 chars/token estimate, see
+    # `queue/ratelimit.py::estimate_tokens`) is generous relative to this
+    # corpus's real documents (a few hundred to ~2,000 chars) -- it's sized
+    # to catch a genuinely pathological input (a misrouted binary file, an
+    # accidentally-concatenated multi-document dump), not to constrain
+    # legitimate payer correspondence.
+    max_input_chars: int = Field(default=100_000)
+
     # --- Sandbox ---
     sandbox_timeout: float = Field(default=10.0)   # subprocess wall clock (s)
 

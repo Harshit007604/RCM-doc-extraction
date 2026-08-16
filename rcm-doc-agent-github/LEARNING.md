@@ -24,6 +24,238 @@ the hypothesis.
 
 ---
 
+## 2026-08-16 — Closing the CO-19 gap: fuzzy candidates, semantic scope check, OCR-aware severity, and a real measured detection rate
+
+**Goal** — Act on a detailed 6-item follow-up (external feedback, same
+reviewer as the earlier round) specifically targeting the gap the real
+handwritten-document Docling test found: a misread `CO-197` drifted, across
+self-correction attempts, to `CO-19` -- a real, valid registry code,
+completely wrong for the document, that neither existing validator could
+catch.
+
+**Built and measured (items 1, 2, 3, 6 -- real code, real tests, real numbers):**
+
+1. **Fuzzy registry resolution** (`CarcRegistry.resolve_fuzzy`) -- plain
+   Levenshtein edit distance (no new dependency) against every bare CARC
+   number, returning `(code, description, distance)` candidates instead of
+   a bare rejection. Wired into `check_business_rules`'s error message so
+   the self-correction loop gets a bounded candidate list instead of an
+   open-ended "try again" -- which is what let the model wander from
+   `CO-19F` to `CO-19` in the first place. Found and documented a real edge
+   case while testing: a bare 2-letter fragment with no digits (`"PR"`) can
+   rank unrelated same-length codes (`P1`/`P2`/`P3`) ahead of the more
+   likely intended match (`PR-1/2/3`) -- a genuine ambiguity in what the
+   fragment meant, not a bug in the distance math; documented, not silently
+   hidden.
+2. **`check_code_semantics`** -- NOT narrative-text matching (verified all 3
+   of this project's own document templates are terse, label-only tables
+   with zero narrative near a code's mention -- a narrative-matching check
+   would never fire on this corpus at all). Instead: ~30/297 real CARC
+   codes carry an explicit scope restriction in their OFFICIAL X12
+   description ("to be used for Workers' Compensation only", etc.). If a
+   resolved code carries one of those restrictions and the whole document
+   shows zero corroborating context, that's a real, checkable
+   inconsistency. Verified zero false-positive risk against the real
+   9-document corpus (none of its ground-truth codes are scope-restricted).
+   Found a real, narrow limitation while testing: corroboration is a plain
+   substring search, so a NEGATED mention ("NOT a workers' comp claim")
+   would still substring-match and wrongly count as corroborating --
+   documented, not fixed (real payer documents essentially never phrase it
+   that way).
+3. **OCR-aware validation** -- `ocr_low_grade` now threads all the way from
+   `ingest()` through `DocumentAgent.run()` into `validate()` (previously it
+   only reached the queue's review policy, never the validators
+   themselves). Two real, opposite-direction effects: (a) grounding's exact
+   substring match falls back to a fuzzy `difflib`-ratio approximate match
+   under poor/fair OCR, since exact-match is too strict for genuinely
+   garbled-but-legitimate text; (b) `check_code_semantics`'s severity
+   escalates from `warning` to `error` under poor/fair OCR, since a scope
+   mismatch combined with confirmed-unreliable OCR is a STRONGER signal,
+   not a weaker one.
+6. **`ocr_noise_eval.py`** -- a pure-mechanical eval (zero LLM calls) that
+   corrupts the real ground-truth corpus's own denial codes with realistic
+   OCR confusions (character substitution AND truncation) and measures
+   detection rate by bucket. **Real result:**
+   ```
+   invalid                 36/36  caught (100.0%)
+   valid_but_different      2/18  caught ( 11.1%)
+   ```
+   The `invalid` bucket was already 100% before this session (the existing
+   registry check). `valid_but_different` is the exact number item 6 asked
+   for -- "currently 0%" -- and it is now genuinely 11.1% (2/18), driven
+   entirely by `check_code_semantics` catching the 2 corruptions that
+   happened to land on a scope-restricted code (`CO-197`→`CO-19` twice, once
+   per document it appears in). The other 16/18 corruptions (`CO-45`→`CO-4`,
+   `CO-50`→`CO-5`, etc.) are missed because those target codes carry no
+   scope restriction to check against -- reported honestly as a real,
+   partial improvement, not oversold as "solved."
+
+**Investigated and scoped down (items 4, 5 -- not built, and why):**
+
+4. **Computed per-field confidence** -- inspected Docling's actual installed
+   API (`ConfidenceReport`, `TextItem.model_fields`) directly rather than
+   assuming the request's premise. Confirmed: Docling exposes confidence at
+   PAGE granularity only (`ConfidenceReport.pages[page_no]`, aggregated to
+   the document-level `mean_grade`/`low_grade` this project already
+   captures) -- `TextItem` has no `confidence` field at all. `min(model_conf,
+   ocr_span_conf)` per extracted field is not buildable with real data at
+   this granularity without patching Docling's internals to surface the OCR
+   engine's own per-region scores. Not faked; left as a documented gap.
+5. **Two-pass OCR diff** -- checked which OCR engines are actually available
+   in this environment: only `rapidocr` (via torch) is installed;
+   `easyocr`/`ocrmac`/`tesserocr` are all unavailable. A genuine two-engine
+   diff would require adding a new, sizable dependency (a real decision, not
+   a silent addition) -- not implemented this round; a same-engine
+   different-settings pass is the fallback path if this is prioritized
+   later, not yet verified to produce meaningfully different output.
+
+**Bonus fix, found while re-running the real handwritten-document test end
+to end:** the CLI only ever printed validation issues when the OVERALL
+result failed (`if val and not val.ok`) -- meaning a real semantic warning
+on an otherwise-passing document (exactly what happened on this exact
+document once Docling's own confidence came back "good" despite the real
+`F0450`/`CO-19` errors) was silently invisible to the user. Fixed to print
+all issues whenever any exist, regardless of overall pass/fail.
+
+**Evidence this is real, not just unit-tested in isolation:** re-ran the
+actual handwritten PNG through the full CLI (`gpt-4.1-nano`, real credits)
+after all of the above landed. The real trace shows, in order: step 1's
+`CO-19F` rejection message now includes "Close registry matches: CO-197
+(...), 19 (...), 190 (...)" (item 2, live); step 2's re-guess to `19`
+triggers the real semantic-scope warning (item 1, live); the final result
+still finalizes `status=ok` with `CO-19` present (Docling graded this run
+"good/good" despite the real errors, so the warning never escalated to a
+blocking error) -- but now the CLI actually SHOWS that warning instead of
+hiding it. 106/106 unit tests passing throughout; the real 9-doc corpus eval
+re-run at F1 1.000 with the new checks in place, confirming zero regression.
+
+**Learned** — Verifying a request's technical premise against the real,
+installed dependency (Docling's actual confidence API; which OCR engines are
+actually installed) before implementing is what separates "built" from
+"faked" -- two of six items here turned out not to be buildable exactly as
+specified, and the honest path was investigating and documenting that, not
+quietly approximating it with invented numbers. Separately: a detection
+mechanism gated on a component's own self-reported confidence (item 3's OCR-
+grade-based severity escalation) inherits that component's blind spots --
+this real re-test proved the new checks work exactly as designed, AND that
+they don't help when Docling itself misjudges its own reliability, which is
+the same root problem this whole investigation started from.
+
+**Next** — If item 5 (two-pass OCR diff) is prioritized, the real
+environmental constraint (no second OCR engine installed) needs a decision
+first: add `pytesseract`+`tesseract-ocr` (a real new dependency) or accept a
+same-engine different-settings pass with unverified differential value.
+
+---
+
+## 2026-08-16 — Real code fixes from external feedback + a synthetic handwritten-document Docling test
+
+**Goal** — Act on a detailed piece of external feedback mapping this repo
+against a review brief, item by item, plus test the one explicitly-flagged
+untested limitation: Docling OCR on non-typed (handwritten-style) input.
+
+**Action, real gaps addressed:**
+1. **Input-length guard-rail (previously zero coverage).** Added
+   `Settings.max_input_chars` (default 100,000, ~4 chars/token → ~25k
+   tokens) and a check at the top of `DocumentAgent.run()` that rejects an
+   oversized document with `status="error"` **before the graph runs at
+   all** — zero LLM calls spent on a rejected document, and
+   `store.triage_decision` still routes it to human review (the existing
+   `status=="error"` branch), not a silent drop. `max_tokens` only ever
+   bounded the *response*; nothing previously bounded the *request*.
+   New tests in `tests/test_agent.py` (3 tests) prove this with a "poison"
+   `LLMClient` subclass whose `complete()` raises `AssertionError` if ever
+   called — the rejection test only passes because the LLM is never
+   reached, not because of what a real call would have returned.
+2. **Named test scenarios packaged explicitly.** Added `tests/scenarios.md`
+   — 5 named scenarios, each citing REAL evidence already produced
+   elsewhere in this repo (the F1 1.000 run, the fabricated-`total_charged`
+   grounding break-test, the zero-LLM-call EDI path, the gpt-4.1-nano
+   missing-`triage` bug + fix, the "caught 2/3 injected discrepancies"
+   reconciliation run) — no new claims, just made checkable in one place.
+3. **Stale, self-contradicting report opening fixed.**
+   `reports/agent_run_report_docproc.md` opened by claiming it was
+   "produced with the offline mock extractor" using a `--domain` CLI flag
+   that hasn't existed since the CLI was renamed to `src/cli.py` — both
+   false at the time of reading, and contradicted by the report's own §5.
+   Corrected the opening to point at §4a (the real `gpt-4.1` run) as the
+   actual evidence base.
+4. **`memory_dir`'s scope made explicit, not left implicit.** Confirmed via
+   grep that `Settings.memory_dir` is read ONLY by `legacy/memory.py` (the
+   CSV agent), never by `src/docproc/`. Rather than remove a field the
+   legacy agent genuinely needs, added an explicit statement (README +
+   `.env.example`) that cross-session memory is intentionally out of scope
+   for the primary document-extraction agent, naming the concrete
+   implementation path (LangGraph's built-in `SqliteSaver` checkpointer)
+   that would close the gap if it were ever prioritized.
+5. **Loop wording + "advanced technique" made explicit, not left to
+   inference.** Added one sentence mapping the documented `reason -> act ->
+   observe -> self-correct -> respond` loop onto the more common five-verb
+   `reason -> plan -> act -> observe -> respond` framing (`thought` IS the
+   plan/reason step, just not a separate turn). Expanded the "Advanced
+   technique" capability-map row to name all three techniques this repo
+   actually demonstrates explicitly: chain-of-thought (`thought`),
+   mechanically-verified self-correction (deliberately distinct from vanilla
+   self-reflection — the validator is independent and deterministic, not
+   the model grading itself), and multi-agent collaboration (`Portfolio`/
+   `Reconciler`).
+
+**Action, real experiment — synthetic handwritten document through Docling:**
+
+Rendered a real corpus document (`DOC-1000_denial_letter.txt`) as a PNG
+using a cursive system font (Bradley Hand Bold, with small per-line
+position jitter) to approximate handwritten input, since real
+scanned/handwritten mail was an explicitly stated, never-tested limitation.
+
+**Real result** — ran the actual `ingest()` function (not a mock) against
+the image:
+```
+OCR/layout quality: mean=good, worst-5%=good.
+```
+But the real extracted text contains genuine character-level OCR errors
+Docling's own confidence grade did NOT flag:
+- `P.0. B0X` for `P.O. Box` (0/O confusion)
+- `Member1dentifier` (missing space + I/1 confusion)
+- **`F0450` for `70450`** — a real CPT procedure code misread (7 → F)
+- **`CO-19F` for `CO-197`** — the SAME denial code read correctly earlier
+  in the document (`Co-197`) but WRONG in its second appearance later in
+  the same file (7 → F again, inconsistently)
+- `PR-.` for `PR-3` (3 → period)
+
+**Interpretation** — this is the concrete, real evidence for exactly why
+`store.py`'s OCR-confidence review gate exists as a *mechanical* threshold
+rather than trusting Docling's self-reported grade at face value: a
+"good/good" confidence score coexisted with a misread procedure code and
+an inconsistently-misread denial code in the same document. Whether the
+downstream LLM extraction and grounding check catch this depends on
+real-account API testing that a concurrent API-credits exhaustion blocked
+this session from completing (see below) — the OCR-layer finding stands on
+its own regardless.
+
+**Blocker hit mid-test:** `MODEL=openai/gpt-4.1-nano python src/cli.py
+--doc <handwritten png>` failed immediately with a REAL, non-code error:
+`OpenAIException - You have no credits remaining.` This is an account
+billing state, not a bug — every OpenAI model is blocked equally (nano
+included) until credits are added, and this project has no offline/mock
+fallback by design, so there was no way to work around it and still be
+testing something real.
+
+**Learned** — An OCR engine's own self-reported confidence grade is a
+*layout/detection* confidence signal, not a character-accuracy guarantee —
+this is now demonstrated, not just asserted from documentation. The
+existing guardrail design (never trust a component's self-report; verify
+mechanically downstream) generalizes to Docling's own confidence API the
+same way it already applies to the LLM's self-described certainty.
+
+**Next** — Once real API access is restored (either by adding OpenAI
+credits or configuring a different provider's key in `.env`), re-run the
+same handwritten PNG through the full `DocumentAgent` pipeline to see
+whether grounding/validation catches the `F0450`/`CO-19F` misreads
+downstream, and whether the OCR confidence gate alone would have been
+sufficient without them.
+
+---
+
 ## 2026-08-16 — WAL-mode SQLite corruption, for real, over a Docker Desktop bind mount
 
 **Goal** — Continue exercising the containerized pipeline from the previous

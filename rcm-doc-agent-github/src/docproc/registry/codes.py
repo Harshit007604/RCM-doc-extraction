@@ -261,6 +261,83 @@ class CarcRegistry:
         return actionable[0] if actionable else (infos[0] if infos else None)
 
     @staticmethod
+    def _levenshtein(a: str, b: str) -> int:
+        """Plain edit distance, no external dependency -- only ever called
+        on short numeric-ish strings (bare CARC numbers, 1-4 chars), so the
+        O(len(a)*len(b)) DP table is trivially cheap."""
+        if a == b:
+            return 0
+        if not a:
+            return len(b)
+        if not b:
+            return len(a)
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a, 1):
+            curr = [i] + [0] * len(b)
+            for j, cb in enumerate(b, 1):
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb))
+            prev = curr
+        return prev[-1]
+
+    def resolve_fuzzy(self, code: str, max_distance: int = 2,
+                      limit: int = 5) -> list[tuple[str, str, int]]:
+        """Edit-distance neighbours of an unresolvable code's bare number,
+        each as `(code, description, distance)`, sorted closest-first.
+
+        Why this exists: a real Docling OCR test on a handwritten-style
+        document misread `CO-197` as `CO-19F` -- `lookup()` correctly
+        rejected it, but on the NEXT self-correction turn the model's next
+        guess drifted to `CO-19`, a real registry code that happens to be
+        edit-distance 1 from the misread text but semantically unrelated
+        (Workers' Comp liability vs. the actual precertification denial).
+        The model was given an open-ended "try again" and wandered. This
+        method turns that into a BOUNDED candidate set with descriptions --
+        `render_lookup`/the validation feedback loop can hand the model
+        `[(CO-19, "Workers' Comp liability", 1), (CO-197, "Precert absent",
+        1)]` instead of a bare rejection, converting open generation into
+        closed classification against 2-3 real options.
+
+        Known limitation, found while testing this exact method: when a
+        code degrades to a BARE group-letter fragment with no digits at all
+        (e.g. "PR" with the dash and number both lost to OCR), the bare
+        form is the fragment itself ("PR", 2 chars) rather than a stripped
+        number -- this can rank real X12 codes that happen to share that
+        2-char shape (e.g. "P1"/"P2"/"P3", genuinely unrelated codes in
+        their own right) ahead of the more likely intended match ("PR-1"/
+        "PR-2"/"PR-3", whose bare form after stripping is a single digit,
+        putting them at a LARGER edit distance from "PR" than same-length
+        "P1"-style codes). Not fixed here -- it's a real ambiguity in what
+        the fragment was supposed to mean, not a bug in the distance math.
+        """
+        if not code:
+            return []
+        bare = self._bare_carc_number(code)
+        if not bare:
+            # A pure group-code prefix with no number left (e.g. "PR-"
+            # strips to "") carries no numeric signal to fuzzy-match
+            # against -- every 1-char code would be "distance 1" from "",
+            # which is noise, not a real candidate set.
+            return []
+        seen_bare: set[str] = set()
+        candidates: list[tuple[str, str, int]] = []
+        for curated_code, info in self._curated.items():
+            cbare = self._bare_carc_number(curated_code)
+            if cbare in seen_bare:
+                continue
+            seen_bare.add(cbare)
+            d = self._levenshtein(bare, cbare)
+            if d <= max_distance:
+                candidates.append((curated_code, info.description, d))
+        for raw_bare, description in self._raw_carc.items():
+            if raw_bare in seen_bare:
+                continue
+            d = self._levenshtein(bare, raw_bare)
+            if d <= max_distance:
+                candidates.append((raw_bare, description, d))
+        candidates.sort(key=lambda t: t[2])
+        return candidates[:limit]
+
+    @staticmethod
     def render_lookup(results: dict[str, DenialCode | None]) -> str:
         """Render registry results as a tool OBSERVATION for the agent."""
         lines = ["CODE_LOOKUP:"]
@@ -331,6 +408,10 @@ def derive_triage(denial_codes: list[str]) -> tuple[bool, str]:
 
 def primary_denial_code(denial_codes: list[str]) -> DenialCode | None:
     return _default_registry.primary_denial_code(denial_codes)
+
+
+def resolve_fuzzy(code: str, max_distance: int = 2, limit: int = 5) -> list[tuple[str, str, int]]:
+    return _default_registry.resolve_fuzzy(code, max_distance=max_distance, limit=limit)
 
 
 def render_lookup(results: dict[str, DenialCode | None]) -> str:

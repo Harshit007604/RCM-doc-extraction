@@ -112,7 +112,7 @@ class Worker:
                 text = ingested.text or ""
                 self.limiter.acquire(estimate_tokens(text, max_steps=3))
                 agent = DocumentAgent(self.settings, self.llm)
-                outcome = agent.run(text, job["filename"])
+                outcome = agent.run(text, job["filename"], ocr_low_grade=ingested.ocr_low_grade)
                 llm_calls = outcome.steps_used
                 ingest_kind = "docling" if "Docling" in ingested.source_note else "text"
                 ocr_grade, ocr_low_grade = ingested.ocr_grade, ingested.ocr_low_grade
