@@ -1,0 +1,29 @@
+# Core (required to run everything, including eval; a real LLM API key is
+# always required -- there is no offline mode)
+pandas>=2.0
+numpy>=1.24
+pydantic>=2.5
+pydantic-settings>=2.1
+tenacity>=8.2
+langgraph>=0.2         # agent engine (StateGraph)
+litellm>=1.50          # provider-agnostic LLM gateway (~100 providers, one API)
+
+# Optional UI: only needed for `streamlit run ui/streamlit_app.py`
+# (primary, document extraction) or `streamlit run legacy/ui/streamlit_app.py`
+# (legacy CSV agent)
+# streamlit>=1.30
+
+# Optional document ingestion: only needed to read PDF/DOCX/image documents
+# (src/docproc/ingest.py). Heavy dependency (pulls in torch + OCR models).
+# .edi and .txt documents never need this.
+# docling>=2.0
+
+# Optional: only needed to re-run scripts/fetch_carc_codes.py (regenerates
+# src/docproc/carc_codes.py from the real, official X12.org CARC list). Not
+# needed to run the agent -- the generated file is checked into the repo.
+# requests>=2.31
+# beautifulsoup4>=4.12
+
+# Dev/test: unit tests (tests/) -- pure-function tests, no LLM/API key needed.
+# Run with: pytest
+pytest>=8.0

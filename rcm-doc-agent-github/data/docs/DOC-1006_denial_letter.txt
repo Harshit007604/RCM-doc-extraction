@@ -1,0 +1,58 @@
+BLUECREST MUTUAL
+Claims Review Department
+P.O. Box 41822, Suite 300
+
+April 20, 2026
+
+St. Alder Community Hospital
+Attn: Patient Financial Services
+
+RE: NOTICE OF CLAIM DETERMINATION
+
+Patient Name:       Priya Whitfield
+Member Identifier:  Z956709736
+Claim Number:       CLM5526864997
+Date of Service:    05/05/2026
+
+Dear Provider,
+
+We have completed our review of the above-referenced claim. Following
+adjudication, one or more submitted services have not been approved for
+payment. The determination for each service line appears below.
+
+SERVICE LINE DETAIL
+----------------------------------------------------------------
+  Procedure 80053 - Comprehensive metabolic panel
+    Amount Billed .......... $765.62
+    Amount Allowed ......... $0.00
+    Amount Paid ............ $0.00
+    Adjustment Reason ...... CO-197
+
+  Procedure 45378 - Colonoscopy, diagnostic
+    Amount Billed .......... $2,329.06
+    Amount Allowed ......... $1,545.18
+    Amount Paid ............ $1,229.32
+    Adjustment Reason ...... CO-45
+
+  Procedure 36415 - Collection of venous blood by venipuncture
+    Amount Billed .......... $684.48
+    Amount Allowed ......... $513.85
+    Amount Paid ............ $506.18
+    Adjustment Reason ...... CO-45
+
+----------------------------------------------------------------
+  TOTAL BILLED ............. $3,779.16
+  TOTAL ALLOWED ............ $2,059.03
+  TOTAL PAID ............... $1,735.50
+  PATIENT RESPONSIBILITY ... $323.53
+
+Adjustment reason codes applied to this claim: CO-197, CO-45, PR-3.
+
+APPEAL RIGHTS
+If you believe this determination is in error, you may submit a written
+appeal with supporting clinical documentation. Appeals must be received
+no later than November 01, 2026. Appeals received after this date
+will not be considered absent proof of good cause.
+
+Sincerely,
+Provider Appeals Unit

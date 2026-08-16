@@ -1,0 +1,129 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Enterprise ingestion pipeline demo.
+  #
+  #   docker compose run --rm seed                  # generate 100 docs + 10 EDI
+  #   docker compose run --rm enqueue               # push them onto the queue
+  #   docker compose up --scale worker=4 worker     # process with 4 worker containers
+  #   docker compose up ui                          # HITL review queue @ :8501
+  #
+  # The queue is a SQLite file on a shared volume. That is deliberately the
+  # smallest thing that is genuinely durable and multi-process safe, so the
+  # whole pipeline runs on a laptop with no extra infrastructure. It is also
+  # the first thing to replace at real volume: `store.JobStore`'s interface
+  # (enqueue / claim_next / complete / fail) is queue-shaped precisely so the
+  # backend can become SQS, Postgres SKIP LOCKED, or Kafka without touching
+  # the workers. Runs in rollback-journal mode (NOT WAL) -- a real multi-
+  # container run on Docker Desktop for macOS (this exact --scale worker=4
+  # + ui + status topology) corrupted a WAL-mode jobs.db for real, because
+  # WAL's shared-memory (-shm) coordination isn't reliably coherent across
+  # separate containers on that bind-mount layer (see LEARNING.md). Rollback-
+  # journal mode only needs POSIX file locks, which the same bind mount
+  # honors correctly -- fine for this demo's scale but NOT a recommendation
+  # for production throughput.
+  # ---------------------------------------------------------------------------
+
+  # One-shot: generate the 100-document sample corpus (+ 10 X12 835 EDI files
+  # so the mixed-format routing is exercised, not just prose).
+  seed:
+    build: .
+    # Deliberately ONE flat line, not a multi-line YAML folded (`>`) block:
+    # a folded scalar with unevenly-indented continuation lines silently
+    # keeps literal newlines where indentation increases, which previously
+    # split `sed "..." file > out.edi` onto two separate shell statements --
+    # `sed` printed to stdout unredirected, and the bare `> out.edi` on its
+    # own line truncated the target to 0 bytes. All 10 REMIT-90N.edi files
+    # were silently empty as a result (found via a real e2e docker-compose
+    # run -- see LEARNING.md).
+    command: sh -c "python -m src.docproc.generator --out data/docs_100 --n 100 --seed 42 && for i in 1 2 3 4 5 6 7 8 9 10; do sed \"s/CLM2234510745/CLM99999$${i}0745/\" data/real_world/sample_835.edi > data/docs_100/REMIT-90$${i}.edi; done && echo 'Seeded:' && ls data/docs_100 | wc -l"
+    volumes:
+      - ./data:/app/data
+
+  # One-shot: enqueue the corpus. Idempotent -- safe to re-run.
+  enqueue:
+    build: .
+    command: python -m src.docproc.queue.pipeline enqueue --docs data/docs_100 --batch demo
+    environment:
+      QUEUE_DB: /app/data/queue/jobs.db
+    volumes:
+      - ./data:/app/data
+
+  # The scalable unit. `--scale worker=N` runs N of these against one queue;
+  # jobs are claimed atomically so they never collide.
+  #
+  # WORKER_REPLICAS must match the --scale value: it divides the account's
+  # tokens-per-minute budget across containers so the fleet as a whole stays
+  # under the real provider limit. Without this, concurrency just converts
+  # into RateLimitErrors (measured -- see LEARNING.md).
+  worker:
+    build: .
+    command: python -m src.docproc.queue.worker --batch demo --follow
+    environment:
+      QUEUE_DB: /app/data/queue/jobs.db
+      WORKER_THREADS: "2"      # documents in flight per container (I/O-bound)
+      WORKER_REPLICAS: "4"     # keep in sync with --scale worker=N
+      # Set this to YOUR account's real tokens-per-minute quota (check
+      # https://platform.openai.com/account/rate-limits). 30000 is what
+      # this project's own account actually measures (see LEARNING.md) --
+      # NOT a universal default. A real e2e `--scale worker=4` run with this
+      # left at a too-high placeholder (180000) caused every one of the 4
+      # containers to budget 45000 TPM each (180000/4), collectively
+      # blowing past the real 30000 ceiling and forcing most documents to
+      # `needs_review` via exhausted rate-limit retries -- an artifact of
+      # misconfiguration, not a real finding. If unsure, start LOW and raise
+      # it once you've confirmed your account's real limit.
+      LLM_TPM: "30000"
+      REVIEW_THRESHOLD: "5000" # $ at risk at/above which a human always reviews
+      QA_SAMPLE_RATE: "0"      # e.g. "0.05" to audit-sample 5% of clean docs too
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs       # per-document JSONL traces stay inspectable
+    restart: on-failure
+
+  # Pipeline counters (one-shot).
+  status:
+    build: .
+    command: python -m src.docproc.queue.pipeline status --batch demo
+    environment:
+      QUEUE_DB: /app/data/queue/jobs.db
+    volumes:
+      - ./data:/app/data
+
+  # ---------------------------------------------------------------------------
+  # Interactive surfaces
+  # ---------------------------------------------------------------------------
+
+  # One-shot: run the document-extraction evaluation suite.
+  eval:
+    build: .
+    command: python -m src.docproc.evaluation.evaluate --docs data/docs
+    env_file:
+      - .env
+
+  # Primary agent's Streamlit UI on http://localhost:8501 -- includes the
+  # "Review queue (HITL)" mode that works the pipeline's flagged documents.
+  ui:
+    build: .
+    command: streamlit run ui/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    environment:
+      QUEUE_DB: /app/data/queue/jobs.db
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+  # Legacy CSV agent's Streamlit UI on http://localhost:8502
+  legacy-ui:
+    build: .
+    command: streamlit run legacy/ui/streamlit_app.py --server.address=0.0.0.0 --server.port=8502
+    ports:
+      - "8502:8502"
+    env_file:
+      - .env
+    volumes:
+      - ./memory:/app/memory   # persist cross-session memory on the host

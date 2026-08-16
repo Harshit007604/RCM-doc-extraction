@@ -1,0 +1,385 @@
+[
+  {
+    "doc_id": "DOC-1000",
+    "payer_name": "Vantage Care Network",
+    "provider_name": "St. Alder Community Hospital",
+    "patient_name": "Grace Whitfield",
+    "claim_number": "CLM5070378921",
+    "member_id": "Y728720317",
+    "date_of_service": "2026-01-19",
+    "appeal_deadline": "2026-05-19",
+    "total_charged": 6027.57,
+    "total_allowed": 1238.44,
+    "total_paid": 942.81,
+    "patient_responsibility": 295.63,
+    "denial_codes": [
+      "CO-197",
+      "CO-45",
+      "PR-3"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "70450",
+        "description": "CT head/brain without contrast",
+        "charge_amount": 3837.01,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-197"
+      },
+      {
+        "cpt_code": "80053",
+        "description": "Comprehensive metabolic panel",
+        "charge_amount": 1043.09,
+        "allowed_amount": 500.77,
+        "paid_amount": 413.36,
+        "denial_code": "CO-45"
+      },
+      {
+        "cpt_code": "93010",
+        "description": "Electrocardiogram, interpretation and report",
+        "charge_amount": 1147.47,
+        "allowed_amount": 737.67,
+        "paid_amount": 529.45,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "denial_letter",
+    "file": "DOC-1000_denial_letter.txt"
+  },
+  {
+    "doc_id": "DOC-1001",
+    "payer_name": "BlueCrest Mutual",
+    "provider_name": "Riverbend Regional Medical Center",
+    "patient_name": "Nina Barrera",
+    "claim_number": "CLM3744112455",
+    "member_id": "C204615284",
+    "date_of_service": "2026-03-16",
+    "appeal_deadline": "2026-09-12",
+    "total_charged": 4907.3,
+    "total_allowed": 1675.08,
+    "total_paid": 1224.34,
+    "patient_responsibility": 450.74,
+    "denial_codes": [
+      "CO-45",
+      "CO-50",
+      "PR-3"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "80053",
+        "description": "Comprehensive metabolic panel",
+        "charge_amount": 2475.07,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-50"
+      },
+      {
+        "cpt_code": "93010",
+        "description": "Electrocardiogram, interpretation and report",
+        "charge_amount": 2432.23,
+        "allowed_amount": 1675.08,
+        "paid_amount": 1224.34,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "eob",
+    "file": "DOC-1001_eob.txt"
+  },
+  {
+    "doc_id": "DOC-1002",
+    "payer_name": "Meridian Health Plan",
+    "provider_name": "Riverbend Regional Medical Center",
+    "patient_name": "Rafael Lindqvist",
+    "claim_number": "CLM7222695482",
+    "member_id": "Y178598835",
+    "date_of_service": "2026-05-08",
+    "appeal_deadline": "2026-08-06",
+    "total_charged": 7525.72,
+    "total_allowed": 2711.77,
+    "total_paid": 2438.85,
+    "patient_responsibility": 272.92,
+    "denial_codes": [
+      "CO-27",
+      "CO-45",
+      "PR-3"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "36415",
+        "description": "Collection of venous blood by venipuncture",
+        "charge_amount": 2533.96,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-27"
+      },
+      {
+        "cpt_code": "45378",
+        "description": "Colonoscopy, diagnostic",
+        "charge_amount": 2001.8,
+        "allowed_amount": 1110.84,
+        "paid_amount": 1042.32,
+        "denial_code": "CO-45"
+      },
+      {
+        "cpt_code": "80053",
+        "description": "Comprehensive metabolic panel",
+        "charge_amount": 2989.96,
+        "allowed_amount": 1600.93,
+        "paid_amount": 1396.53,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "remittance_advice",
+    "file": "DOC-1002_remittance_advice.txt"
+  },
+  {
+    "doc_id": "DOC-1003",
+    "payer_name": "Northlake Benefit Administrators",
+    "provider_name": "Cardinal Point Health System",
+    "patient_name": "Devon Delacroix",
+    "claim_number": "CLM8717592285",
+    "member_id": "A200497933",
+    "date_of_service": "2026-02-08",
+    "appeal_deadline": "2026-06-08",
+    "total_charged": 5737.13,
+    "total_allowed": 1878.61,
+    "total_paid": 1491.85,
+    "patient_responsibility": 386.76,
+    "denial_codes": [
+      "CO-45",
+      "CO-50",
+      "PR-3"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "36415",
+        "description": "Collection of venous blood by venipuncture",
+        "charge_amount": 3253.57,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-50"
+      },
+      {
+        "cpt_code": "99285",
+        "description": "Emergency dept visit, high complexity",
+        "charge_amount": 2483.56,
+        "allowed_amount": 1878.61,
+        "paid_amount": 1491.85,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "denial_letter",
+    "file": "DOC-1003_denial_letter.txt"
+  },
+  {
+    "doc_id": "DOC-1004",
+    "payer_name": "Meridian Health Plan",
+    "provider_name": "Riverbend Regional Medical Center",
+    "patient_name": "Elena Ferraro",
+    "claim_number": "CLM2234510745",
+    "member_id": "Z365874400",
+    "date_of_service": "2026-04-25",
+    "appeal_deadline": "2026-08-23",
+    "total_charged": 2306.72,
+    "total_allowed": 1035.96,
+    "total_paid": 761.56,
+    "patient_responsibility": 274.4,
+    "denial_codes": [
+      "CO-45",
+      "CO-97",
+      "PR-1"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "36415",
+        "description": "Collection of venous blood by venipuncture",
+        "charge_amount": 270.7,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-97"
+      },
+      {
+        "cpt_code": "71046",
+        "description": "Radiologic exam, chest, 2 views",
+        "charge_amount": 2036.02,
+        "allowed_amount": 1035.96,
+        "paid_amount": 761.56,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "eob",
+    "file": "DOC-1004_eob.txt"
+  },
+  {
+    "doc_id": "DOC-1005",
+    "payer_name": "Sunstate Medical Assurance",
+    "provider_name": "Cardinal Point Health System",
+    "patient_name": "Ana Barrera",
+    "claim_number": "CLM5113424221",
+    "member_id": "B189104138",
+    "date_of_service": "2026-04-25",
+    "appeal_deadline": "2026-07-24",
+    "total_charged": 4952.47,
+    "total_allowed": 773.51,
+    "total_paid": 624.71,
+    "patient_responsibility": 148.8,
+    "denial_codes": [
+      "CO-22",
+      "CO-45",
+      "PR-2"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "93010",
+        "description": "Electrocardiogram, interpretation and report",
+        "charge_amount": 3653.22,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-22"
+      },
+      {
+        "cpt_code": "70450",
+        "description": "CT head/brain without contrast",
+        "charge_amount": 1299.25,
+        "allowed_amount": 773.51,
+        "paid_amount": 624.71,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "remittance_advice",
+    "file": "DOC-1005_remittance_advice.txt"
+  },
+  {
+    "doc_id": "DOC-1006",
+    "payer_name": "BlueCrest Mutual",
+    "provider_name": "St. Alder Community Hospital",
+    "patient_name": "Priya Whitfield",
+    "claim_number": "CLM5526864997",
+    "member_id": "Z956709736",
+    "date_of_service": "2026-05-05",
+    "appeal_deadline": "2026-11-01",
+    "total_charged": 3779.16,
+    "total_allowed": 2059.03,
+    "total_paid": 1735.5,
+    "patient_responsibility": 323.53,
+    "denial_codes": [
+      "CO-197",
+      "CO-45",
+      "PR-3"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "80053",
+        "description": "Comprehensive metabolic panel",
+        "charge_amount": 765.62,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-197"
+      },
+      {
+        "cpt_code": "45378",
+        "description": "Colonoscopy, diagnostic",
+        "charge_amount": 2329.06,
+        "allowed_amount": 1545.18,
+        "paid_amount": 1229.32,
+        "denial_code": "CO-45"
+      },
+      {
+        "cpt_code": "36415",
+        "description": "Collection of venous blood by venipuncture",
+        "charge_amount": 684.48,
+        "allowed_amount": 513.85,
+        "paid_amount": 506.18,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "denial_letter",
+    "file": "DOC-1006_denial_letter.txt"
+  },
+  {
+    "doc_id": "DOC-1007",
+    "payer_name": "Sunstate Medical Assurance",
+    "provider_name": "Cardinal Point Health System",
+    "patient_name": "Grace Okonkwo",
+    "claim_number": "CLM3635981472",
+    "member_id": "A323287495",
+    "date_of_service": "2026-05-04",
+    "appeal_deadline": "2026-10-31",
+    "total_charged": 6681.25,
+    "total_allowed": 1336.73,
+    "total_paid": 1169.24,
+    "patient_responsibility": 167.49,
+    "denial_codes": [
+      "CO-45",
+      "CO-50",
+      "PR-2"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "36415",
+        "description": "Collection of venous blood by venipuncture",
+        "charge_amount": 4138.36,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-50"
+      },
+      {
+        "cpt_code": "99285",
+        "description": "Emergency dept visit, high complexity",
+        "charge_amount": 1951.32,
+        "allowed_amount": 953.17,
+        "paid_amount": 839.0,
+        "denial_code": "CO-45"
+      },
+      {
+        "cpt_code": "70450",
+        "description": "CT head/brain without contrast",
+        "charge_amount": 591.57,
+        "allowed_amount": 383.56,
+        "paid_amount": 330.24,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "eob",
+    "file": "DOC-1007_eob.txt"
+  },
+  {
+    "doc_id": "DOC-1008",
+    "payer_name": "Sunstate Medical Assurance",
+    "provider_name": "St. Alder Community Hospital",
+    "patient_name": "Elena Delacroix",
+    "claim_number": "CLM8514792277",
+    "member_id": "Z384280550",
+    "date_of_service": "2026-04-04",
+    "appeal_deadline": "2026-08-02",
+    "total_charged": 6225.55,
+    "total_allowed": 1271.68,
+    "total_paid": 922.94,
+    "patient_responsibility": 348.74,
+    "denial_codes": [
+      "CO-27",
+      "CO-45",
+      "PR-1"
+    ],
+    "line_items": [
+      {
+        "cpt_code": "70450",
+        "description": "CT head/brain without contrast",
+        "charge_amount": 4172.27,
+        "allowed_amount": 0.0,
+        "paid_amount": 0.0,
+        "denial_code": "CO-27"
+      },
+      {
+        "cpt_code": "99285",
+        "description": "Emergency dept visit, high complexity",
+        "charge_amount": 2053.28,
+        "allowed_amount": 1271.68,
+        "paid_amount": 922.94,
+        "denial_code": "CO-45"
+      }
+    ],
+    "doc_type": "remittance_advice",
+    "file": "DOC-1008_remittance_advice.txt"
+  }
+]
